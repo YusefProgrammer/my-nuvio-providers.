@@ -1,0 +1,19 @@
+{
+  "name": "My Nuvio Providers",
+  "version": "1.0",
+  "scrapers": [
+    {
+      "id": "animewitcher",
+      "name": "AnimeWitcher",
+      "description": "AnimeWitcher (animewitcher.com) — anime movies & series",
+      "version": "1.0",
+      "author": "Abodabodd",
+      "supportedTypes": ["movie", "tv"],
+      "filename": "providers/animewitcher.js",
+      "enabled": true,
+      "formats": ["mp4"],
+      "logo": "https://www.google.com/s2/favicons?domain=animewitcher.com&sz=256",
+      "contentLanguage": ["ar", "en"]
+    }
+  ]
+}
