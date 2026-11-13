@@ -20,7 +20,7 @@
       "name": "FaselHD",
       "description": "Arabic Hard Sub movies, TV shows, and anime (~5s)",
       "version": "16.2",
-      "author": "Nuvio Team",
+      "author": "Abodabodd",
       "supportedTypes": ["movie", "tv"],
       "filename": "providers/faselhd.js",
       "enabled": true,
