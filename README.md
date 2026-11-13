@@ -46,4 +46,4 @@
 4. الصق الرابط المباشر لملف الإضافة (JSON/URL) الموجود أدناه:
 
 ```text
-[https://raw.githubusercontent.com/USERNAME/REPOSITORY/main/plugin.json](https://raw.githubusercontent.com/USERNAME/REPOSITORY/main/plugin.json)
+[https://raw.githubusercontent.com/YusefProgrammer/my-nuvio-providers./refs/heads/main/manifest.json](https://raw.githubusercontent.com/YusefProgrammer/my-nuvio-providers./refs/heads/main/manifest.json)
