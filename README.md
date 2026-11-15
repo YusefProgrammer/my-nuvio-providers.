@@ -27,12 +27,11 @@
 ---
 ## ​📊 إحصائيات الزوار | Visitors
 ​<div align="center">
-​<!-- شخصية أنيميشن تحمل يافطة عدد الزوار -->
-<img src="https://komarev.com/ghpvc/?username=YusefProgrammer-my-nuvio-providers&color=0A84FF&style=plastic&label=VISITORS&abbreviated=true" alt="Visitor Count" />
-​</div>
-​<div align="center">
-<img src="https://capsule-render.vercel.app/api?type=waving&color=0A84FF&height=90&section=footer" width="100%" />
+
+  <img src="https://count.getloli.com/@YusefProgrammer-my-nuvio-providers?theme=asoul" alt="Visitor Count" />
+
 </div>
+
 ---
 
 ## 📥 طريقة التثبيت | Installation
