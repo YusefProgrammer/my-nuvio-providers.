@@ -15,7 +15,7 @@
       "logo": "https://www.google.com/s2/favicons?domain=animewitcher.com&sz=256",
       "contentLanguage": ["ar", "en"]
     },
-        {
+    {
       "id": "cimacloud",
       "name": "Cima Cloud",
       "description": "Cima Cloud (cima-cloud.com) — full Arabic catalog: movies, series & anime, HLS/MP4 via the app's own API with token attestation (~5-10s)",
@@ -36,24 +36,19 @@
         "ar"
       ]
     },
-  {
-  "name": "Egywatch Repo",
-  "version": "1.0.0",
-  "description": "Egywatch provider converted from CloudStream to Nuvio.",
-  "author": "YO",
-  "scrapers": [
     {
       "id": "egywatch",
       "name": "Egywatch",
+      "description": "Egywatch provider converted from CloudStream to Nuvio.",
       "version": "1.0.0",
-      "filename": "egywatch.js",
+      "author": "YO",
+      "filename": "providers/egywatch.js",
       "supportedTypes": ["movie", "tv"],
       "contentLanguage": ["ar"],
       "logo": "https://www.google.com/s2/favicons?domain=egywatch.com&sz=256",
-      "enabled": true
-    }
-    ] 
-    }, 
+      "enabled": true,
+      "formats": ["mp4", "m3u8"]
+    },
     {
       "id": "nuvio-faselhd",
       "name": "FaselHD",
@@ -68,4 +63,4 @@
       "contentLanguage": ["en", "ar", "ja"]
     }
   ]
-} 
+}
