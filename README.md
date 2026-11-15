@@ -25,7 +25,14 @@
 إضافة **Nuvio** العربية مصممة خصيصاً لتوفير تجربة استثنائية لمتابعة الأفلام، المسلسلات، والأنمي بدقة عالية، مع واجهة مستخدم سلسة وتحديثات مستمرة لضمان عمل الروابط بأعلى كفاءة. تم تصميم هذا المشروع ليلبي تطلعات الجمهور العربي في تسهيل الوصول إلى المحتوى المفضلة لديهم.
 
 ---
-
+## ​📊 إحصائيات الزوار | Visitors
+​<div align="center">
+​<!-- شخصية أنيميشن تحمل يافطة عدد الزوار -->
+<img src="https://komarev.com/ghpvc/?username=YusefProgrammer-my-nuvio-providers&color=0A84FF&style=plastic&label=VISITORS&abbreviated=true" alt="Visitor Count" />
+​</div>
+​<div align="center">
+<img src="https://capsule-render.vercel.app/api?type=waving&color=0A84FF&height=90&section=footer" width="100%" />
+</div>
 ---
 
 ## 📥 طريقة التثبيت | Installation
