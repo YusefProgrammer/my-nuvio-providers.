@@ -5,8 +5,7 @@
 </p>
 
 <p align="center">
-  <img src="https://komarev.com/ghpc/?username=YusefProgrammer&label=الزوار&color=0A84FF&style=flat-square" alt="الزوار" />
-  <img src="https://img.shields.io/github/stars/YusefProgrammer/my-nuvio-providers.?style=flat-square&label=النجوم&color=0A84FF" alt="النجوم" />
+  <img src="https://i.ibb.co/dwF8ZGz5/IMG-20261116-181357.jpg />
 </p>
 
 ## مرحباً 👋
