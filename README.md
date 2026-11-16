@@ -1,47 +1,36 @@
-<div align="center">
-
-<img src="https://capsule-render.vercel.app/api?type=waving&color=00d2ff&height=180&section=header&text=Nuvio%20Plugin%20Arabic&fontSize=35&fontColor=ffffff&animation=fadeIn&fontAlignY=38" width="100%" />
-
-<h3 align="center">⚡ الإضافة العربية الاحترافية لتطبيق Nuvio ⚡</h3>
+<div dir="rtl" align="right">
 
 <p align="center">
-  <b>بوابة عرض المحتوى الترفيهي، الأنمي، والمسلسلات بتجربة بصرية فريدة وسريعة</b>
+  <img src="https://capsule-render.vercel.app/api?type=waving&color=0:101920,100:0A84FF&height=160&section=header&text=My%20Nuvio%20Providers&fontColor=ffffff&fontSize=40&fontAlignY=35" alt="My Nuvio Providers" />
 </p>
 
-<!-- شارات الحالة -->
 <p align="center">
-  <img src="https://img.shields.io/badge/Status-Active-00d2ff?style=for-the-badge&logo=activision&logoColor=white" alt="Status" />
-  <img src="https://img.shields.io/badge/Language-JavaScript%20%2F%20JSON-purple?style=for-the-badge&logo=javascript&logoColor=white" alt="Language" />
-  <img src="https://img.shields.io/github/downloads/USERNAME/REPOSITORY/total?style=for-the-badge&color=00d2ff&logo=github" alt="Downloads" />
-  <img src="https://img.shields.io/github/stars/USERNAME/REPOSITORY?style=for-the-badge&color=purple&logo=github" alt="Stars" />
+  <img src="https://komarev.com/ghpc/?username=YusefProgrammer&label=الزوار&color=0A84FF&style=flat-square" alt="الزوار" />
+  <img src="https://img.shields.io/github/stars/YusefProgrammer/my-nuvio-providers.?style=flat-square&label=النجوم&color=0A84FF" alt="النجوم" />
 </p>
 
-</div>
+## مرحباً 👋
 
----
+مستودع مصادر جاهزة لتطبيق **Nuvio** لمشاهدة الأفلام والمسلسلات والأنمي.
 
-## 🌟 نظرة عامة | Overview
+## المصادر
 
-إضافة **Nuvio** العربية مصممة خصيصاً لتوفير تجربة استثنائية لمتابعة الأفلام، المسلسلات، والأنمي بدقة عالية، مع واجهة مستخدم سلسة وتحديثات مستمرة لضمان عمل الروابط بأعلى كفاءة. تم تصميم هذا المشروع ليلبي تطلعات الجمهور العربي في تسهيل الوصول إلى المحتوى المفضلة لديهم.
+| المصدر | المحتوى | اللغة |
+|---|---|---|
+| AnimeWitcher | أنمي وأفلام ومسلسلات | عربي، إنجليزي |
+| Cima Cloud | أفلام ومسلسلات وأنمي | عربي |
+| FaselHD | أفلام ومسلسلات وأنمي | عربي، إنجليزي، ياباني |
 
----
-## ​📊 إحصائيات الزوار | Visitors
-​<div align="center">
+## الإضافة
 
-  <img src="https://count.getloli.com/@YusefProgrammer-my-nuvio-providers?theme=asoul" alt="Visitor Count" />
-
-</div>
-
----
-
-## 📥 طريقة التثبيت | Installation
-
-لتثبيت الإضافة في تطبيق **Nuvio** الخاص بك، اتبع الخطوات البسيطة التالية:
-
-1. افتح تطبيق **Nuvio** على جهازك.
-2. توجه إلى إعدادات الإضافات (**Extensions**).
-3. اضغط على خيار **إضافة مصدر جديد** (Add Repository / Extension).
-4. الصق الرابط المباشر لملف الإضافة (JSON/URL) الموجود أدناه:
+انسخ الرابط وأضفه في تطبيق Nuvio:
 
 ```text
 https://raw.githubusercontent.com/YusefProgrammer/my-nuvio-providers./refs/heads/main/manifest.json
+```
+
+## ⭐ أعجبك؟
+
+ضع نجمة للمستودع، فهذا يدعمني ويساعد غيري على الوصول إليه.
+
+</div>
