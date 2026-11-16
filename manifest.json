@@ -1,5 +1,5 @@
 {
-  "name": "My Nuvio Providers",
+  "name": "YO Arabic Stream",
   "version": "1.0",
   "scrapers": [
     {
@@ -7,7 +7,7 @@
       "name": "AnimeWitcher",
       "description": "AnimeWitcher (animewitcher.com) — anime movies & series",
       "version": "1.0",
-      "author": "Abodabodd",
+      "author": "yo",
       "supportedTypes": ["movie", "tv"],
       "filename": "providers/animewitcher.js",
       "enabled": true,
@@ -20,7 +20,7 @@
       "name": "Cima Cloud",
       "description": "Cima Cloud (cima-cloud.com) — full Arabic catalog: movies, series & anime, HLS/MP4 via the app's own API with token attestation (~5-10s)",
       "version": "1.0",
-      "author": "mo7AmMeD64",
+      "author": "yo",
       "supportedTypes": [
         "movie",
         "tv"
@@ -31,7 +31,7 @@
         "mp4",
         "m3u8"
       ],
-      "logo": "https://www.google.com/s2/favicons?domain=cima-cloud.com&sz=256",
+      "logo":"https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQCYfpRevB1CCUyxo97YJru18dfj-BAew9SQ3SNBMEunA&s=10",
       "contentLanguage": [
         "ar"
       ]
@@ -41,12 +41,12 @@
       "name": "FaselHD",
       "description": "Arabic Hard Sub movies, TV shows, and anime (~5s)",
       "version": "16.2",
-      "author": "Abodabodd",
+      "author": "yo",
       "supportedTypes": ["movie", "tv"],
       "filename": "providers/faselhd.js",
       "enabled": true,
       "formats": ["m3u8"],
-      "logo": "https://raw.githubusercontent.com/nvmindl/nuvio-providers/main/Assets/faselhdx.png",
+      "logo": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQIELANoA8jlMiGI7jQdBiirNc0TtYCV3V3_-G-8F0Rgw&s=10",
       "contentLanguage": ["en", "ar", "ja"]
     }
   ]
