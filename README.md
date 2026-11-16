@@ -87,4 +87,4 @@
 3. الصق الرابط التالي:
 
 ```text
-https://raw.githubusercontent.com/YusefProgrammer/my-nuvio-providers./refs/heads/main/manifest.json
+https://github.com/YusefProgrammer/yo-ar-stream/raw/refs/heads/main/manifest.json
