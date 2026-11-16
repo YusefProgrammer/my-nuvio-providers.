@@ -37,19 +37,6 @@
       ]
     },
     {
-      "id": "egywatch",
-      "name": "Egywatch",
-      "description": "Egywatch provider converted from CloudStream to Nuvio.",
-      "version": "1.0.0",
-      "author": "YO",
-      "filename": "providers/egywatch.js",
-      "supportedTypes": ["movie", "tv"],
-      "contentLanguage": ["ar"],
-      "logo": "https://www.google.com/s2/favicons?domain=egywatch.com&sz=256",
-      "enabled": true,
-      "formats": ["mp4", "m3u8"]
-    },
-    {
       "id": "nuvio-faselhd",
       "name": "FaselHD",
       "description": "Arabic Hard Sub movies, TV shows, and anime (~5s)",
