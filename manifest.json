@@ -16,6 +16,16 @@
       "contentLanguage": ["ar", "en"]
     },
 {
+  "id": "wecima",
+  "name": "WeCima",
+  "version": "1.0.0",
+  "filename": "providers/wecima.js",
+  "supportedTypes": ["movie", "tv"],
+  "contentLanguage": ["ar"],
+  "logo": "https://wecima.ac/static/img/favicon.png",
+  "enabled": true
+},
+{
   "id": "anime3rb",
   "name": "Anime3rb",
   "version": "1.0.0",
