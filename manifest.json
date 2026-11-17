@@ -36,6 +36,19 @@
         "ar"
       ]
     },
+{
+  "id": "egywatch",
+  "name": "EgyWatch",
+  "description": "EgyWatch provider converted from CloudStream/CS3 format to Nuvio runtime environment.",
+  "version": "1.0.0",
+  "author": "YO",
+  "filename": "providers/egywatch.js",
+  "supportedTypes": ["movie", "tv"],
+  "contentLanguage": ["ar"],
+  "logo": "https://raw.githubusercontent.com/Abodabodd/re-3arabi/refs/heads/main/Egy/icon.png",
+  "enabled": true,
+  "formats": ["mp4", "m3u8"]
+},
     {
   "id": "topcinema",
   "name": "Top Cinema",
