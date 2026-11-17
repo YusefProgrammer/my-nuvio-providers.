@@ -1,15 +1,16 @@
 /**
- * TopCinema - Nuvio JS Provider (Ported from working CloudStream logic)
- * Handles AJAX servers, VidTube unpacking, and episode extraction.
+ * TopCinema - Nuvio JS Provider v3
+ * Full support: Arabic ordinals, episode matching, multi-server extraction.
+ * Ported from CloudStream Kotlin logic.
  */
 
-const BASE_URL = "https://topcinemaa.one";
-const TMDB_API_KEY = "6c91e91ec97e117e446a62f4d2ace9b7";
-const USER_AGENT = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36";
+var BASE_URL = "https://topcinemaa.one";
+var TMDB_API_KEY = "6c91e91ec97e117e446a62f4d2ace9b7";
+var USER_AGENT = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36";
 
 function log() {
   var args = Array.prototype.slice.call(arguments);
-  console.log.apply(console, ["[TopCinema]"].concat(args));
+  try { console.log.apply(console, ["[TopCinema]"].concat(args)); } catch (e) {}
 }
 
 function fixUrl(url, base) {
@@ -21,366 +22,483 @@ function fixUrl(url, base) {
   return base + "/" + u;
 }
 
+function safeDecode(s) { try { return decodeURIComponent(s); } catch (e) { return String(s); } }
+
 function getBaseUrl(url) {
-  try {
-    var match = String(url).match(/^(https?:\/\/[^\/]+)/);
-    return match ? match[1] : BASE_URL;
-  } catch (e) { return BASE_URL; }
+  var m = String(url).match(/^(https?:\/\/[^\/]+)/);
+  return m ? m[1] : BASE_URL;
 }
 
-/* ---------------- HTTP Helpers ---------------- */
+/* ---------- Arabic ordinals ---------- */
+
+var ARABIC_ORDINALS = {
+  "الأول": 1, "الاول": 1, "الأولى": 1, "الاولى": 1,
+  "الثاني": 2, "الثانية": 2, "الثانى": 2, "الثانيه": 2,
+  "الثالث": 3, "الثالثة": 3, "الثالثه": 3,
+  "الرابع": 4, "الرابعة": 4, "الرابعه": 4,
+  "الخامس": 5, "الخامسة": 5, "الخامسه": 5,
+  "السادس": 6, "السادسة": 6, "السادسه": 6,
+  "السابع": 7, "السابعة": 7, "السابعه": 7,
+  "الثامن": 8, "الثامنة": 8, "الثامنه": 8,
+  "التاسع": 9, "التاسعة": 9, "التاسعه": 9,
+  "العاشر": 10, "العاشرة": 10, "العاشره": 10
+};
+
+function arabicToNum(word) {
+  if (!word) return null;
+  word = String(word).trim();
+  if (ARABIC_ORDINALS[word]) return ARABIC_ORDINALS[word];
+  var n = parseInt(word, 10);
+  return isNaN(n) ? null : n;
+}
+
+function parseSE(text) {
+  var out = { season: null, episode: null };
+  if (!text) return out;
+  var t = safeDecode(text);
+
+  var sm = t.match(/الموسم[\s\-_]*(?!الحلقة)([^\s\-_\/]+)/);
+  if (sm) out.season = arabicToNum(sm[1]);
+
+  var em = t.match(/الحلقة[\s\-_]*([^\s\-_\/]+)/);
+  if (em) out.episode = arabicToNum(em[1]);
+
+  var sxm = t.match(/[Ss](\d{1,2})[\s\-._]*[Ee](\d{1,4})/);
+  if (sxm) {
+    if (!out.season) out.season = parseInt(sxm[1], 10);
+    if (!out.episode) out.episode = parseInt(sxm[2], 10);
+  }
+  return out;
+}
+
+function normalizeTitle(s) {
+  return String(s || "")
+    .replace(/^مسلسل\s+/i, "")
+    .replace(/^فيلم\s+/i, "")
+    .replace(/\s+الموسم\s+\S+/gi, "")
+    .replace(/\s+الحلقة\s+\S+/gi, "")
+    .replace(/\s+مترجم[ةه]?\s*$/i, "")
+    .replace(/\s+اون\s*لاين\s*$/i, "")
+    .replace(/\s+كامل[ةه]?\s*$/i, "")
+    .replace(/\s+بجودة\s+\S+/i, "")
+    .replace(/\s+(HD|WEB-DL|BluRay|1080p?|720p?|480p?|SD)\s*$/i, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\u0600-\u06FF]+/g, "");
+}
+
+/* ---------- HTTP ---------- */
 
 function fetchHtml(url, referer) {
-  var headers = {
+  var h = {
     "User-Agent": USER_AGENT,
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "ar-EG,ar;q=0.9,en-US;q=0.8,en;q=0.7"
+    "Accept-Language": "ar-EG,ar;q=0.9,en;q=0.8"
   };
-  if (referer) headers["Referer"] = referer;
-  return fetch(url, { headers: headers })
-    .then(function (res) {
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      return res.text();
-    })
-    .catch(function (e) {
-      log("Fetch error:", url, e.message);
-      return null;
-    });
+  if (referer) h["Referer"] = referer;
+  return fetch(url, { headers: h })
+    .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.text(); })
+    .catch(function (e) { log("fetch error:", url, e.message); return null; });
 }
 
-function postForm(url, formData, referer) {
-  var body = Object.keys(formData).map(function (k) {
-    return encodeURIComponent(k) + "=" + encodeURIComponent(formData[k]);
+function postForm(url, data, referer) {
+  var body = Object.keys(data).map(function (k) {
+    return encodeURIComponent(k) + "=" + encodeURIComponent(data[k]);
   }).join("&");
-  var headers = {
+  var h = {
     "User-Agent": USER_AGENT,
     "Accept": "*/*",
     "X-Requested-With": "XMLHttpRequest",
     "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-    "Accept-Language": "ar-EG,ar;q=0.9,en-US;q=0.8,en;q=0.7"
+    "Accept-Language": "ar-EG,ar;q=0.9,en;q=0.8"
   };
-  if (referer) headers["Referer"] = referer;
-  return fetch(url, {
-    method: "POST",
-    headers: headers,
-    body: body
-  })
-  .then(function (res) { return res.text(); })
-  .catch(function (e) {
-    log("POST error:", url, e.message);
-    return null;
-  });
+  if (referer) h["Referer"] = referer;
+  return fetch(url, { method: "POST", headers: h, body: body })
+    .then(function (r) { return r.text(); })
+    .catch(function (e) { log("post error:", url, e.message); return null; });
 }
 
-/* ---------------- TMDB ---------------- */
+/* ---------- TMDB ---------- */
 
-function tmdbTitles(tmdbId, mediaType) {
+function tmdbInfo(tmdbId, mediaType) {
   var type = mediaType === "tv" ? "tv" : "movie";
   var url = "https://api.themoviedb.org/3/" + type + "/" + tmdbId +
             "?api_key=" + TMDB_API_KEY + "&append_to_response=translations,alternative_titles";
-  return fetch(url)
-    .then(function (res) { return res.json(); })
+  return fetch(url).then(function (r) { return r.json(); })
     .then(function (d) {
       var titles = [];
-      if (d.title || d.name) titles.push(d.title || d.name);
-      if (d.original_title && titles.indexOf(d.original_title) === -1) titles.push(d.original_title);
-      if (d.original_name && titles.indexOf(d.original_name) === -1) titles.push(d.original_name);
+      var push = function (t) {
+        if (t && typeof t === "string" && titles.indexOf(t) === -1 && t.trim()) titles.push(t.trim());
+      };
+      push(d.title); push(d.name);
+      push(d.original_title); push(d.original_name);
       if (d.translations && d.translations.translations) {
-        for (var i = 0; i < d.translations.translations.length; i++) {
-          var tr = d.translations.translations[i];
-          if (tr.iso_639_1 === "ar" && tr.data) {
-            var t = tr.data.title || tr.data.name;
-            if (t && titles.indexOf(t) === -1) titles.push(t);
-          }
-        }
+        d.translations.translations.forEach(function (tr) {
+          if (tr.iso_639_1 === "ar" && tr.data) { push(tr.data.title); push(tr.data.name); }
+        });
+      }
+      if (d.alternative_titles && d.alternative_titles.results) {
+        d.alternative_titles.results.forEach(function (a) { push(a.title); });
       }
       return { titles: titles, year: (d.release_date || d.first_air_date || "").split("-")[0] || null };
     })
     .catch(function (e) { log("TMDB error:", e.message); return { titles: [], year: null }; });
 }
 
-/* ---------------- Search & Episode Finder ---------------- */
+/* ---------- Search ---------- */
 
-function findPageUrl(titles, isMovie) {
-  var queries = titles.slice(0, 4);
-  var promises = queries.map(function (q) {
-    return fetchHtml(BASE_URL + "/search/?query=" + encodeURIComponent(q))
-      .then(function (html) { return html ? parseSearch(html, titles, isMovie) : null; });
-  });
-  return Promise.all(promises).then(function (results) {
-    for (var i = 0; i < results.length; i++) if (results[i]) return results[i];
-    return null;
-  });
-}
-
-function parseSearch(html, wantedTitles, isMovie) {
-  var re = /<a\b[^>]*?href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
-  var m, best = null, bestScore = 0;
-  var wanted = wantedTitles.map(function (t) { return t.toLowerCase().replace(/[^a-z0-9\u0600-\u06FF]+/g, ""); });
-  while ((m = re.exec(html)) !== null) {
-    var href = m[1];
-    var text = m[2].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().toLowerCase();
-    var normText = text.replace(/[^a-z0-9\u0600-\u06FF]+/g, "");
-    if (/\/(category|tag|page|search|login|register|contact|wp-content|feed|author)\b/i.test(href)) continue;
-    var score = 0;
-    for (var i = 0; i < wanted.length; i++) {
-      if (normText === wanted[i]) { score = 3000; break; }
-      if (normText.indexOf(wanted[i]) !== -1) score = Math.max(score, 2000);
+function searchTopCinema(query) {
+  var url = BASE_URL + "/search/?query=" + encodeURIComponent(query) + "&type=all";
+  return fetchHtml(url).then(function (html) {
+    if (!html) return [];
+    var results = [], seen = {};
+    var re = /<a\b[^>]*?href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+    var m;
+    while ((m = re.exec(html)) !== null) {
+      var href = m[1];
+      if (/\/(category|tag|page|search|login|register|contact|wp-content|feed|author)\b/i.test(href)) continue;
+      if (href.indexOf(BASE_URL) !== 0 && href.indexOf("/") !== 0) continue;
+      var full = fixUrl(href, BASE_URL);
+      if (seen[full]) continue;
+      seen[full] = true;
+      results.push({ url: full, text: m[2].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() });
     }
-    var isSeries = /مسلسل|series|episode|حلقة/i.test(text) || /series|episode/i.test(href);
-    if (isMovie && isSeries) score -= 500;
-    if (!isMovie && !isSeries) score -= 500;
-    if (score > bestScore) { bestScore = score; best = fixUrl(href, BASE_URL); }
-  }
-  return best;
+    return results;
+  });
 }
 
-function findEpisodeUrl(seriesHtml, season, episode) {
-  var re = /<a\b[^>]*?href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
-  var m, wantedEp = parseInt(episode, 10), wantedSeason = parseInt(season, 10) || 1;
-  var candidates = [];
-  while ((m = re.exec(seriesHtml)) !== null) {
-    var href = m[1];
-    var text = m[2].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-    if (!/حلقة|الحلقة|episode|ep\s*\d+/i.test(text) && !/episode|ep[-_]?\d+/i.test(href)) continue;
-    var epMatch = text.match(/(?:الحلقة|حلقة|episode|ep)\s*(\d+)/i) || href.match(/(?:episode|ep)[-_]?(\d+)/i);
-    if (!epMatch) continue;
-    var epNum = parseInt(epMatch[1], 10);
-    var seasonMatch = text.match(/(?:الموسم|season)\s*(\d+)/i) || href.match(/(?:season|s)[-_]?(\d+)/i);
-    var seasonNum = seasonMatch ? parseInt(seasonMatch[1], 10) : 1;
-    if (seasonNum === wantedSeason && epNum === wantedEp) candidates.unshift({ url: fixUrl(href, BASE_URL), score: 100 });
-    else if (epNum === wantedEp) candidates.push({ url: fixUrl(href, BASE_URL), score: 50 });
+function scoreBase(titleText, wanted) {
+  var score = 0;
+  for (var i = 0; i < wanted.length; i++) {
+    if (titleText === wanted[i]) { return 3000; }
+    if (titleText.indexOf(wanted[i]) !== -1) score = Math.max(score, 2000);
+    if (wanted[i].indexOf(titleText) !== -1 && titleText.length > 3) score = Math.max(score, 1000);
   }
-  if (candidates.length > 0) {
-    candidates.sort(function (a, b) { return b.score - a.score; });
-    return candidates[0].url;
-  }
+  return score;
+}
+
+function pickMovieResult(results, titles) {
+  var wanted = titles.map(normalizeTitle).filter(function (t) { return t.length >= 2; });
+  var best = null, bestScore = 0;
+  results.forEach(function (r) {
+    if (safeDecode(r.url).indexOf("الحلقة") !== -1) return;
+    var s = scoreBase(normalizeTitle(r.text), wanted);
+    if (s > bestScore) { bestScore = s; best = r.url; }
+  });
+  return bestScore > 0 ? best : null;
+}
+
+function pickTVResult(results, titles, season, episode) {
+  var wanted = titles.map(normalizeTitle).filter(function (t) { return t.length >= 2; });
+  var wantS = season != null ? parseInt(season, 10) : 1;
+  var wantE = episode != null ? parseInt(episode, 10) : 1;
+
+  var epUrl = null, epScore = 0;
+  var seUrl = null, seScore = 0;
+
+  results.forEach(function (r) {
+    var dec = safeDecode(r.url);
+    var base = scoreBase(normalizeTitle(r.text), wanted);
+    if (base === 0) return;
+
+    if (dec.indexOf("الحلقة") !== -1) {
+      var se = parseSE(dec);
+      var ep = base;
+      if (se.season !== null) ep += (se.season === wantS) ? 500 : -800;
+      if (se.episode !== null) ep += (se.episode === wantE) ? 1500 : -1500;
+      if (ep > epScore) { epScore = ep; epUrl = r.url; }
+    } else if (dec.indexOf("/series/") !== -1 || dec.indexOf("الموسم") !== -1) {
+      if (base > seScore) { seScore = base; seUrl = r.url; }
+    }
+  });
+
+  // Prefer exact episode match
+  if (epUrl && epScore >= 3000) return { type: "episode", url: epUrl };
+  if (seUrl && seScore > 0) return { type: "series", url: seUrl };
+  if (epUrl) return { type: "episode", url: epUrl };
   return null;
 }
 
-/* ---------------- Core Extraction Logic (from CloudStream) ---------------- */
+/* ---------- Episode finder inside series/season page ---------- */
 
-// Unpacker for Dean Edwards Packer (critical for VidTube)
+function findEpisodeInPage(html, season, episode) {
+  var wantS = season != null ? parseInt(season, 10) : 1;
+  var wantE = episode != null ? parseInt(episode, 10) : 1;
+  var re = /<a\b[^>]*?href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  var m;
+  var bestEp = null;
+  var bestSeasonPage = null;
+
+  while ((m = re.exec(html)) !== null) {
+    var href = fixUrl(m[1], BASE_URL);
+    var text = m[2].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    var dec = safeDecode(href + " " + text);
+
+    if (dec.indexOf("الحلقة") !== -1) {
+      var se = parseSE(dec);
+      if (se.episode === wantE && (se.season === null || se.season === wantS)) {
+        if (!bestEp) bestEp = href;
+      }
+    } else if (dec.indexOf("الموسم") !== -1 && !bestSeasonPage) {
+      var se2 = parseSE(dec);
+      if (se2.season === wantS) bestSeasonPage = href;
+    }
+  }
+
+  if (bestEp) return { type: "episode", url: bestEp };
+  if (bestSeasonPage) return { type: "season", url: bestSeasonPage };
+  return null;
+}
+
+/* ---------- Server extraction (all servers) ---------- */
+
+function extractServersFromWatch(html, watchUrl) {
+  var baseUrl = getBaseUrl(watchUrl);
+  var tasks = [];
+
+  // Direct player iframe
+  var piMatch = html.match(/class=["'][^"']*player--iframe[^"']*["'][\s\S]{0,1500}?<iframe[^>]+src=["']([^"']+)["']/i);
+  if (piMatch && piMatch[1]) {
+    log("Direct player iframe:", piMatch[1]);
+    tasks.push({ type: "iframe", url: piMatch[1], referer: watchUrl });
+  }
+
+  // All <li server--item>
+  var liRe = /<li\b[^>]*>/gi;
+  var liM;
+  while ((liM = liRe.exec(html)) !== null) {
+    if (liM[0].indexOf("server--item") === -1) continue;
+    var idM = liM[0].match(/data-id=["']([^"']+)["']/);
+    var numM = liM[0].match(/data-server=["']([^"']+)["']/);
+    if (idM && numM) {
+      tasks.push({
+        type: "ajax",
+        baseUrl: baseUrl,
+        id: idM[1],
+        num: numM[1],
+        referer: watchUrl
+      });
+    }
+  }
+
+  log("Server tasks:", tasks.length);
+  if (tasks.length === 0) return Promise.resolve([]);
+
+  var promises = tasks.map(function (t) {
+    if (t.type === "iframe") return resolveEmbedToDirects(t.url, t.referer);
+    var ajaxUrl = t.baseUrl + "/wp-content/themes/movies2023/Ajaxat/Single/Server.php";
+    return postForm(ajaxUrl, { id: t.id, i: t.num }, t.referer)
+      .then(function (resHtml) {
+        if (!resHtml) return [];
+        var ifr = resHtml.match(/<iframe[^>]+src=["']([^"']+)["']/i);
+        if (!ifr) return [];
+        log("Server", t.num, "-> embed:", ifr[1]);
+        return resolveEmbedToDirects(ifr[1], t.referer);
+      });
+  });
+
+  return Promise.all(promises).then(function (arrays) {
+    var flat = [], seen = {};
+    arrays.forEach(function (arr) {
+      (arr || []).forEach(function (s) {
+        if (s.url && !seen[s.url]) { seen[s.url] = true; flat.push(s); }
+      });
+    });
+    return flat;
+  });
+}
+
+/* ---------- Embed resolver ---------- */
+
+function unwrapPlayUrl(url) {
+  try {
+    if (url.indexOf("play.php?to=") === -1) return url;
+    var part = url.substring(url.indexOf("play.php?to=") + "play.php?to=".length);
+    var decoded = decodeURIComponent(part).trim();
+    if (decoded.indexOf("https://") !== decoded.lastIndexOf("https://")) {
+      decoded = decoded.substring(decoded.lastIndexOf("https://"));
+    }
+    return decoded.indexOf("http") === 0 ? decoded : "https:" + decoded.replace(/^:/, "");
+  } catch (e) { return url; }
+}
+
+function resolveEmbedToDirects(embedUrl, referer) {
+  var url = unwrapPlayUrl(embedUrl);
+  log("Resolving:", url);
+  if (/vidtube\./i.test(url)) return resolveVidTube(url, referer);
+  return fetchHtml(url, referer).then(function (html) {
+    if (!html) return [];
+    var streams = [], seen = {};
+    var re = /https?:\/\/[^\s"'<>\\]+\.(?:mp4|m3u8)[^\s"'<>\\]*/gi;
+    var m;
+    while ((m = re.exec(html)) !== null) {
+      if (/\.(jpg|png|gif|webp)/i.test(m[0]) || seen[m[0]]) continue;
+      seen[m[0]] = true;
+      streams.push({ url: m[0], quality: "HD", label: "Embed" });
+    }
+    return streams;
+  });
+}
+
+/* ---------- VidTube ---------- */
+
 function unpackJs(p, a, c, k) {
   var digits = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
   function intToBase(num, base) {
     if (num === 0) return "0";
-    var n = num, sb = "";
-    while (n > 0) { sb = digits[n % base] + sb; n = Math.floor(n / base); }
-    return sb;
+    var n = num, out = "";
+    while (n > 0) { out = digits[n % base] + out; n = Math.floor(n / base); }
+    return out;
   }
-  var mapping = {};
+  var map = {};
   for (var i = 0; i < c; i++) {
     var key = intToBase(i, a);
-    var value = (k && k.length > i) ? k[i] : null;
-    if (value && value.length > 0) mapping[key] = value;
+    var val = (k && k.length > i) ? k[i] : null;
+    if (val && val.length > 0) map[key] = val;
   }
-  return p.replace(/\b\w+\b/g, function (w) { return mapping[w] !== undefined ? mapping[w] : w; });
+  return p.replace(/\b\w+\b/g, function (w) { return map[w] !== undefined ? map[w] : w; });
 }
 
-// Unwrap play.php?to= URLs (from CloudStream)
-function unwrapPlayUrl(url) {
-  try {
-    if (url.indexOf("play.php?to=") !== -1) {
-      var decoded = decodeURIComponent(url.substring(url.indexOf("play.php?to=") + "play.php?to=".length)).trim();
-      if (decoded.indexOf("https://") !== -1 && decoded.indexOf("https://") !== decoded.lastIndexOf("https://")) {
-        decoded = decoded.substring(decoded.lastIndexOf("https://"));
-      }
-      return decoded.indexOf("http") === 0 ? decoded : "https:" + decoded.replace(/^:/, "");
-    }
-    return url;
-  } catch (e) { return url; }
-}
-
-// Extract streams from a /watch/ page (Movies and Episodes)
-function extractFromWatchPage(watchUrl) {
-  log("Extracting from watch page:", watchUrl);
-  return fetchHtml(watchUrl)
-    .then(function (html) {
-      if (!html) return [];
-      var finalWatchUrl = watchUrl; // Note: fetch redirects, but we'll use original for referer
-      var baseUrl = getBaseUrl(finalWatchUrl);
-      var promises = [];
-
-      // 1. Check direct iframe in player--iframe
-      var directIframeMatch = html.match(/<div class="player--iframe">[\s\S]*?<iframe[^>]+src=["']([^"']+)["']/i);
-      if (directIframeMatch) {
-        log("Found direct iframe:", directIframeMatch[1]);
-        promises.push(resolveEmbed(directIframeMatch[1], finalWatchUrl));
-      }
-
-      // 2. Iterate through server list (watch--servers--list)
-      var serverRegex = /<li[^>]*class="[^"]*server--item[^"]*"[^>]*data-id=["']([^"']+)["'][^>]*data-server=["']([^"']+)["'][^>]*>([\s\S]*?)<\/li>/gi;
-      var match;
-      while ((match = serverRegex.exec(html)) !== null) {
-        var serverId = match[1];
-        var serverNum = match[2];
-        var serverName = match[3].replace(/<[^>]+>/g, " ").trim() || ("Server " + serverNum);
-        promises.push(fetchServerAjax(baseUrl, serverId, serverNum, finalWatchUrl, serverName));
-      }
-
-      if (promises.length === 0) { log("No iframes or servers found on watch page"); return []; }
-      return Promise.all(promises).then(function (results) {
-        var flat = [];
-        results.forEach(function (arr) { if (arr) flat = flat.concat(arr); });
-        return flat;
-      });
-    })
-    .catch(function (e) { log("extractFromWatchPage error:", e.message); return []; });
-}
-
-// Fetch Server.php via AJAX to get the embed iframe
-function fetchServerAjax(baseUrl, serverId, serverNum, referer, serverName) {
-  var ajaxUrl = baseUrl + "/wp-content/themes/movies2023/Ajaxat/Single/Server.php";
-  log("AJAX Server:", serverName, "id:", serverId);
-  return postForm(ajaxUrl, { id: serverId, i: serverNum }, referer)
-    .then(function (resHtml) {
-      if (!resHtml) return [];
-      var iframeMatch = resHtml.match(/<iframe[^>]+src=["']([^"']+)["']/i);
-      if (!iframeMatch) { log("No iframe in AJAX response for", serverName); return []; }
-      var embedUrl = iframeMatch[1];
-      log("AJAX returned embed:", embedUrl);
-      return resolveEmbed(embedUrl, referer);
-    });
-}
-
-// Resolve an embed URL (VidTube or others)
-function resolveEmbed(embedUrl, referer) {
-  var finalUrl = unwrapPlayUrl(embedUrl);
-  log("Resolving embed:", finalUrl);
-  if (finalUrl.indexOf("vidtube") !== -1) {
-    return resolveVidTube(finalUrl, referer);
-  }
-  // Fallback: try to find direct links in the embed HTML
-  return fetchHtml(finalUrl, referer).then(function (html) {
+function resolveVidTube(vUrl, referer) {
+  log("VidTube:", vUrl);
+  return fetchHtml(vUrl, referer).then(function (html) {
     if (!html) return [];
-    var streams = [];
-    var mp4Regex = /https?:\/\/[^\s"'<>\\]+\.mp4[^\s"'<>\\]*/gi;
-    var m;
-    while ((m = mp4Regex.exec(html)) !== null) {
-      streams.push({ url: m[0], quality: "HD", label: "Direct" });
+    var streams = [], seen = {};
+    var hostBase = getBaseUrl(vUrl);
+
+    // 1) download buttons
+    var dlRe = /<a\b[^>]*?href=["']([^"']*\/d\/[^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+    var dlM;
+    var dls = [];
+    while ((dlM = dlRe.exec(html)) !== null) {
+      var href = dlM[1];
+      var qual = dlM[2].match(/<b>([^<]+)<\/b>/i);
+      var q = qual ? qual[1].trim() : "Direct";
+      var full = href.indexOf("http") === 0 ? href : hostBase + href;
+      dls.push((function (u, quality) {
+        return fetchHtml(u, vUrl).then(function (dHtml) {
+          if (!dHtml) return null;
+          var dm = dHtml.match(/href=["']([^"']+\.(?:mp4|m3u8)[^"']*)["']/i) ||
+                   dHtml.match(/href=["']([^"']*(?:download|\.mp4)[^"']*)["']/i);
+          if (dm && dm[1]) return { url: dm[1], quality: quality, label: "VidTube-DL" };
+          return null;
+        });
+      })(full, q));
     }
-    return streams;
-  });
-}
-
-// VidTube Resolver (Ported from CloudStream)
-function resolveVidTube(url, referer) {
-  log("VidTube resolving:", url);
-  return fetchHtml(url, referer).then(function (html) {
-    if (!html) return [];
-    var streams = [];
-
-    // 1. Check for download buttons (a[href*='/d/'])
-    var dlRegex = /<a[^>]+href=["']([^"']*\/d\/[^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
-    var m;
-    var dlPromises = [];
-    while ((m = dlRegex.exec(html)) !== null) {
-      var href = m[1];
-      var labelMatch = m[2].match(/<b>([^<]+)<\/b>/i);
-      var quality = labelMatch ? labelMatch[1].trim() : "Direct";
-      var fullUrl = href.indexOf("http") === 0 ? href : getBaseUrl(url) + href;
-      dlPromises.push(fetchHtml(fullUrl, url).then(function (dlHtml) {
-        if (!dlHtml) return null;
-        var directMatch = dlHtml.match(/<a[^>]+href=["']([^"']+\.(?:mp4|m3u8)[^"']*)["']/i) ||
-                          dlHtml.match(/href=["']([^"']*download[^"']*)["']/i);
-        var finalUrl = directMatch ? directMatch[1] : null;
-        if (finalUrl) {
-          return { url: finalUrl, quality: quality, label: "VidTube-DL" };
-        }
-        return null;
-      }));
+    if (dls.length > 0) {
+      return Promise.all(dls).then(function (rs) { return rs.filter(function (r) { return r !== null; }); });
     }
 
-    if (dlPromises.length > 0) {
-      return Promise.all(dlPromises).then(function (results) {
-        return results.filter(function (r) { return r !== null; });
-      });
-    }
-
-    // 2. Fallback: Packer unpacking
-    var packerMatch = html.match(/eval\(function\(p,a,c,k,e,d\)\{[\s\S]*?\}\(\s*['"]([\s\S]*?)['"]\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*['"]([\s\S]*?)['"]\.split/);
-    if (!packerMatch) {
-      log("VidTube: No packer found");
-      return [];
-    }
-    var p = packerMatch[1].replace(/\\'/g, "'");
-    var a = parseInt(packerMatch[2], 10) || 62;
-    var c = parseInt(packerMatch[3], 10) || 0;
-    var kStr = packerMatch[4];
-    var k = kStr ? kStr.split("|") : [];
+    // 2) Packer
+    var packerRe = /eval\(function\(p,a,c,k,e,d\)\{[\s\S]*?\}\(\s*['"]([\s\S]*?)['"]\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*['"]([\s\S]*?)['"]\.split/;
+    var pm = html.match(packerRe);
+    if (!pm) { log("VidTube: no packer"); return []; }
+    var p = pm[1].replace(/\\'/g, "'");
+    var a = parseInt(pm[2], 10) || 62;
+    var c = parseInt(pm[3], 10) || 0;
+    var k = pm[4] ? pm[4].split("|") : [];
 
     var unpacked = unpackJs(p, a, c, k);
-    var fileRegex = /file\s*:\s*["'](https?:\/\/[^"']+)["']/g;
-    var labelRegex = /label\s*:\s*["']([^"']+)["']/g;
+    var fileRe = /file\s*:\s*["'](https?:\/\/[^"']+)["']/g;
+    var labelRe = /label\s*:\s*["']([^"']+)["']/g;
     var files = [], labels = [], fm, lm;
-    while ((fm = fileRegex.exec(unpacked)) !== null) files.push(fm[1]);
-    while ((lm = labelRegex.exec(unpacked)) !== null) labels.push(lm[1]);
+    while ((fm = fileRe.exec(unpacked)) !== null) files.push(fm[1]);
+    while ((lm = labelRe.exec(unpacked)) !== null) labels.push(lm[1]);
 
     for (var i = 0; i < files.length; i++) {
-      streams.push({ url: files[i], quality: labels[i] || "Auto", label: "VidTube-Packed" });
+      if (seen[files[i]]) continue;
+      seen[files[i]] = true;
+      streams.push({ url: files[i], quality: labels[i] || "Auto", label: "VidTube" });
     }
-    log("VidTube unpacked links:", streams.length);
+    log("VidTube unpacked:", streams.length);
     return streams;
   });
 }
 
-/* ---------------- Main Entry ---------------- */
+/* ---------- Page processing ---------- */
+
+function hasServerContent(html) {
+  return html && (html.indexOf("server--item") !== -1 ||
+                  html.indexOf("player--iframe") !== -1 ||
+                  html.indexOf("watch--servers--list") !== -1);
+}
+
+function processPage(pageUrl) {
+  var clean = pageUrl.split("?")[0].replace(/\/+$/, "");
+  var watchUrl = clean + "/watch/";
+  log("Watch URL:", watchUrl);
+
+  return fetchHtml(watchUrl, pageUrl).then(function (html) {
+    if (hasServerContent(html)) return extractServersFromWatch(html, watchUrl);
+    // Fallback: ?embedScreen=true
+    var altUrl = clean + "/?embedScreen=true";
+    log("Fallback:", altUrl);
+    return fetchHtml(altUrl, pageUrl).then(function (alt) {
+      if (!alt) return [];
+      return extractServersFromWatch(alt, altUrl);
+    });
+  });
+}
+
+/* ---------- Main ---------- */
 
 function getStreams(tmdbId, mediaType, season, episode) {
-  log("START:", tmdbId, mediaType, "S" + season, "E" + episode);
+  log("=== START:", tmdbId, mediaType, "S" + season, "E" + episode);
   var isMovie = mediaType === "movie";
 
-  return tmdbTitles(tmdbId, mediaType)
+  return tmdbInfo(tmdbId, mediaType)
     .then(function (info) {
       if (!info.titles.length) { log("No TMDB titles"); return null; }
-      return findPageUrl(info.titles, isMovie);
-    })
-    .then(function (pageUrl) {
-      if (!pageUrl) { log("No page found"); return []; }
-      log("Main page:", pageUrl);
-
-      return fetchHtml(pageUrl).then(function (html) {
-        if (!html) return [];
-        var targetUrl = pageUrl;
-
-        // Series: Find episode URL
-        if (!isMovie && season != null && episode != null) {
-          var epUrl = findEpisodeUrl(html, season, episode);
-          if (!epUrl) {
-            log("Episode S" + season + "E" + episode + " not found in series page");
-            return [];
-          }
-          log("Episode URL:", epUrl);
-          targetUrl = epUrl;
-          // Fetch episode page HTML
-          return fetchHtml(epUrl).then(function (epHtml) {
-            return epHtml;
+      log("Titles:", info.titles.join(" | "));
+      var qs = info.titles.slice(0, 2);
+      return Promise.all(qs.map(searchTopCinema)).then(function (arrs) {
+        var merged = [], seen = {};
+        arrs.forEach(function (arr) {
+          (arr || []).forEach(function (r) {
+            if (!seen[r.url]) { seen[r.url] = true; merged.push(r); }
           });
-        }
-        return html;
-      })
-      .then(function (targetHtml) {
-        // Determine the final watch URL. CloudStream uses /watch/ suffix.
-        // Usually the page HTML contains a link to the watch page.
-        var watchUrl = pageUrl;
-        var watchMatch = targetHtml.match(/href=["']([^"']*\/watch\/[^"']*)["']/i);
-        if (watchMatch) {
-          watchUrl = fixUrl(watchMatch[1], BASE_URL);
-        } else {
-          // If no explicit watch link, try appending /watch/ (common pattern)
-          watchUrl = pageUrl.replace(/\/$/, "") + "/watch/";
-        }
-        log("Final watch URL:", watchUrl);
-        return extractFromWatchPage(watchUrl);
+        });
+        log("Search results:", merged.length);
+        return { info: info, results: merged };
+      });
+    })
+    .then(function (ctx) {
+      if (!ctx) return null;
+      if (isMovie) {
+        var mv = pickMovieResult(ctx.results, ctx.info.titles);
+        if (!mv) { log("No movie page"); return null; }
+        log("Movie page:", mv);
+        return { type: "page", url: mv };
+      }
+      var tv = pickTVResult(ctx.results, ctx.info.titles, season, episode);
+      if (!tv) { log("No TV page"); return null; }
+      log("TV pick:", tv.type, tv.url);
+      return tv;
+    })
+    .then(function (found) {
+      if (!found) return [];
+
+      if (found.type === "page" || found.type === "episode") {
+        return processPage(found.url);
+      }
+
+      // Series page -> navigate
+      return fetchHtml(found.url).then(function (html) {
+        if (!html) return [];
+        var next = findEpisodeInPage(html, season, episode);
+        if (!next) { log("Episode not in series page"); return []; }
+        if (next.type === "episode") return processPage(next.url);
+        // Season page
+        return fetchHtml(next.url).then(function (seasonHtml) {
+          if (!seasonHtml) return [];
+          var ep = findEpisodeInPage(seasonHtml, season, episode);
+          if (!ep || ep.type !== "episode") return [];
+          return processPage(ep.url);
+        });
       });
     })
     .then(function (streams) {
-      if (!streams || !streams.length) { log("No streams extracted"); return []; }
-      log("Raw streams found:", streams.length);
-
-      // Deduplicate and format for Nuvio
-      var seen = {}, final = [];
+      if (!streams || !streams.length) { log("No streams"); return []; }
+      var final = [], seen = {};
       streams.forEach(function (s) {
         if (!s.url || seen[s.url]) return;
         seen[s.url] = true;
@@ -395,13 +513,10 @@ function getStreams(tmdbId, mediaType, season, episode) {
           type: isHls ? "hls" : "mp4"
         });
       });
-      log("Final streams:", final.length);
+      log("=== Final streams:", final.length);
       return final;
     })
-    .catch(function (err) {
-      log("FATAL:", err && err.message);
-      return [];
-    });
+    .catch(function (err) { log("FATAL:", err && err.message); return []; });
 }
 
 module.exports = { getStreams: getStreams };
