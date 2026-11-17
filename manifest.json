@@ -37,6 +37,20 @@
       ]
     },
     {
+  "id": "topcinema",
+  "name": "Top Cinema",
+  "description": "موقع توب سينما لمشاهدة الأفلام والمسلسلات والأنمي مترجمة اون لاين",
+  "version": "1.0.0",
+  "author": "Yusef Messood (Yo)",
+  "logo": "https://topcinemaa.one/wp-content/uploads/2023/05/cropped-icon-192x192.png",
+  "supportedTypes": ["movie", "tv"],
+  "filename": "providers/topcinema.js",
+  "enabled": true,
+  "contentLanguage": ["ar"],
+  "formats": ["mp4", "mkv", "hls"],
+  "limited": false
+},
+    {
       "id": "nuvio-faselhd",
       "name": "FaselHD",
       "description": "Arabic Hard Sub movies, TV shows, and anime (~5s)",
@@ -50,4 +64,4 @@
       "contentLanguage": ["en", "ar", "ja"]
     }
   ]
-}
+    }
