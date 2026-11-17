@@ -1,10 +1,11 @@
 /**
- * TopCinema - Nuvio JS Provider (Fixed Scope Bug + VidTube Resolver)
+ * TopCinema - Nuvio JS Provider (Ported from working CloudStream logic)
+ * Handles AJAX servers, VidTube unpacking, and episode extraction.
  */
 
 const BASE_URL = "https://topcinemaa.one";
 const TMDB_API_KEY = "6c91e91ec97e117e446a62f4d2ace9b7";
-const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+const USER_AGENT = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36";
 
 function log() {
   var args = Array.prototype.slice.call(arguments);
@@ -18,6 +19,57 @@ function fixUrl(url, base) {
   if (u.indexOf("//") === 0) return "https:" + u;
   if (u.indexOf("/") === 0) return base + u;
   return base + "/" + u;
+}
+
+function getBaseUrl(url) {
+  try {
+    var match = String(url).match(/^(https?:\/\/[^\/]+)/);
+    return match ? match[1] : BASE_URL;
+  } catch (e) { return BASE_URL; }
+}
+
+/* ---------------- HTTP Helpers ---------------- */
+
+function fetchHtml(url, referer) {
+  var headers = {
+    "User-Agent": USER_AGENT,
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "ar-EG,ar;q=0.9,en-US;q=0.8,en;q=0.7"
+  };
+  if (referer) headers["Referer"] = referer;
+  return fetch(url, { headers: headers })
+    .then(function (res) {
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      return res.text();
+    })
+    .catch(function (e) {
+      log("Fetch error:", url, e.message);
+      return null;
+    });
+}
+
+function postForm(url, formData, referer) {
+  var body = Object.keys(formData).map(function (k) {
+    return encodeURIComponent(k) + "=" + encodeURIComponent(formData[k]);
+  }).join("&");
+  var headers = {
+    "User-Agent": USER_AGENT,
+    "Accept": "*/*",
+    "X-Requested-With": "XMLHttpRequest",
+    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+    "Accept-Language": "ar-EG,ar;q=0.9,en-US;q=0.8,en;q=0.7"
+  };
+  if (referer) headers["Referer"] = referer;
+  return fetch(url, {
+    method: "POST",
+    headers: headers,
+    body: body
+  })
+  .then(function (res) { return res.text(); })
+  .catch(function (e) {
+    log("POST error:", url, e.message);
+    return null;
+  });
 }
 
 /* ---------------- TMDB ---------------- */
@@ -47,39 +99,29 @@ function tmdbTitles(tmdbId, mediaType) {
     .catch(function (e) { log("TMDB error:", e.message); return { titles: [], year: null }; });
 }
 
-/* ---------------- Search ---------------- */
+/* ---------------- Search & Episode Finder ---------------- */
 
-function findItemUrl(titles, isMovie) {
+function findPageUrl(titles, isMovie) {
   var queries = titles.slice(0, 4);
   var promises = queries.map(function (q) {
-    return fetch(BASE_URL + "/search/?query=" + encodeURIComponent(q), {
-      headers: { "User-Agent": USER_AGENT }
-    })
-    .then(function (res) { return res.text(); })
-    .then(function (html) { return parseSearchResults(html, titles, isMovie); })
-    .catch(function () { return null; });
+    return fetchHtml(BASE_URL + "/search/?query=" + encodeURIComponent(q))
+      .then(function (html) { return html ? parseSearch(html, titles, isMovie) : null; });
   });
-
   return Promise.all(promises).then(function (results) {
-    for (var i = 0; i < results.length; i++) {
-      if (results[i]) { log("Found page:", results[i]); return results[i]; }
-    }
+    for (var i = 0; i < results.length; i++) if (results[i]) return results[i];
     return null;
   });
 }
 
-function parseSearchResults(html, wantedTitles, isMovie) {
+function parseSearch(html, wantedTitles, isMovie) {
   var re = /<a\b[^>]*?href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
   var m, best = null, bestScore = 0;
   var wanted = wantedTitles.map(function (t) { return t.toLowerCase().replace(/[^a-z0-9\u0600-\u06FF]+/g, ""); });
-
   while ((m = re.exec(html)) !== null) {
     var href = m[1];
     var text = m[2].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().toLowerCase();
     var normText = text.replace(/[^a-z0-9\u0600-\u06FF]+/g, "");
     if (/\/(category|tag|page|search|login|register|contact|wp-content|feed|author)\b/i.test(href)) continue;
-    if (href.indexOf(BASE_URL) === -1 && href.indexOf("/") !== 0) continue;
-
     var score = 0;
     for (var i = 0; i < wanted.length; i++) {
       if (normText === wanted[i]) { score = 3000; break; }
@@ -88,68 +130,27 @@ function parseSearchResults(html, wantedTitles, isMovie) {
     var isSeries = /مسلسل|series|episode|حلقة/i.test(text) || /series|episode/i.test(href);
     if (isMovie && isSeries) score -= 500;
     if (!isMovie && !isSeries) score -= 500;
-
     if (score > bestScore) { bestScore = score; best = fixUrl(href, BASE_URL); }
   }
   return best;
 }
 
-/* ---------------- VidTube Resolver ---------------- */
-
-function resolveVidTube(embedUrl) {
-  log("Resolving VidTube:", embedUrl);
-  return fetch(embedUrl, { headers: { "User-Agent": USER_AGENT, "Referer": BASE_URL } })
-    .then(function (res) { return res.text(); })
-    .then(function (html) {
-      var links = [], seen = {};
-      var mp4Regex = /https?:\/\/[^\s"'<>\\]+\.mp4[^\s"'<>\\]*/gi;
-      var match;
-      while ((match = mp4Regex.exec(html)) !== null) {
-        var u = match[0];
-        if (seen[u]) continue;
-        seen[u] = true;
-        var qm = u.match(/(\d{3,4})p/);
-        links.push({ url: u, quality: qm ? qm[1] + "p" : "HD", label: "VidTube" });
-      }
-      var m3u8Regex = /https?:\/\/[^\s"'<>\\]+\.m3u8[^\s"'<>\\]*/gi;
-      while ((match = m3u8Regex.exec(html)) !== null) {
-        var u2 = match[0];
-        if (seen[u2]) continue;
-        seen[u2] = true;
-        links.push({ url: u2, quality: "HLS", label: "VidTube-HLS" });
-      }
-      log("VidTube direct links:", links.length);
-      return links;
-    })
-    .catch(function (e) { log("VidTube error:", e.message); return []; });
-}
-
-/* ---------------- Episode Finder ---------------- */
-
 function findEpisodeUrl(seriesHtml, season, episode) {
   var re = /<a\b[^>]*?href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
   var m, wantedEp = parseInt(episode, 10), wantedSeason = parseInt(season, 10) || 1;
   var candidates = [];
-
   while ((m = re.exec(seriesHtml)) !== null) {
     var href = m[1];
     var text = m[2].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
     if (!/حلقة|الحلقة|episode|ep\s*\d+/i.test(text) && !/episode|ep[-_]?\d+/i.test(href)) continue;
-
-    var epMatch = text.match(/(?:الحلقة|حلقة|episode|ep)\s*(\d+)/i) ||
-                  href.match(/(?:episode|ep)[-_]?(\d+)/i);
+    var epMatch = text.match(/(?:الحلقة|حلقة|episode|ep)\s*(\d+)/i) || href.match(/(?:episode|ep)[-_]?(\d+)/i);
     if (!epMatch) continue;
     var epNum = parseInt(epMatch[1], 10);
     var seasonMatch = text.match(/(?:الموسم|season)\s*(\d+)/i) || href.match(/(?:season|s)[-_]?(\d+)/i);
     var seasonNum = seasonMatch ? parseInt(seasonMatch[1], 10) : 1;
-
-    if (seasonNum === wantedSeason && epNum === wantedEp) {
-      candidates.unshift({ url: fixUrl(href, BASE_URL), score: 100 });
-    } else if (epNum === wantedEp) {
-      candidates.push({ url: fixUrl(href, BASE_URL), score: 50 });
-    }
+    if (seasonNum === wantedSeason && epNum === wantedEp) candidates.unshift({ url: fixUrl(href, BASE_URL), score: 100 });
+    else if (epNum === wantedEp) candidates.push({ url: fixUrl(href, BASE_URL), score: 50 });
   }
-
   if (candidates.length > 0) {
     candidates.sort(function (a, b) { return b.score - a.score; });
     return candidates[0].url;
@@ -157,36 +158,174 @@ function findEpisodeUrl(seriesHtml, season, episode) {
   return null;
 }
 
-/* ---------------- Extract Streams ---------------- */
+/* ---------------- Core Extraction Logic (from CloudStream) ---------------- */
 
-function extractStreams(html, pageUrl) {
-  var streams = [], seen = {};
-
-  var iframeRegex = /<iframe\b[^>]*?src=["']([^"']+)["'][^>]*>/gi;
-  var im;
-  while ((im = iframeRegex.exec(html)) !== null) {
-    var iu = fixUrl(im[1], BASE_URL);
-    if (seen[iu]) continue;
-    if (/facebook|google|youtube|googletagmanager|google-analytics/i.test(iu)) continue;
-    seen[iu] = true;
-    streams.push({ type: "embed", url: iu });
+// Unpacker for Dean Edwards Packer (critical for VidTube)
+function unpackJs(p, a, c, k) {
+  var digits = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  function intToBase(num, base) {
+    if (num === 0) return "0";
+    var n = num, sb = "";
+    while (n > 0) { sb = digits[n % base] + sb; n = Math.floor(n / base); }
+    return sb;
   }
-
-  var directRegex = /https?:\/\/[^\s"'<>\\]+\.(?:m3u8|mp4|mkv)[^\s"'<>\\]*/gi;
-  var dm;
-  while ((dm = directRegex.exec(html)) !== null) {
-    var dUrl = dm[0];
-    if (seen[dUrl]) continue;
-    if (/\.(jpg|png|gif|webp)/i.test(dUrl)) continue;
-    seen[dUrl] = true;
-    var isHls = dUrl.indexOf(".m3u8") !== -1;
-    streams.push({ type: "direct", url: dUrl, quality: isHls ? "1080p" : "720p", label: "Direct" });
+  var mapping = {};
+  for (var i = 0; i < c; i++) {
+    var key = intToBase(i, a);
+    var value = (k && k.length > i) ? k[i] : null;
+    if (value && value.length > 0) mapping[key] = value;
   }
-
-  return streams;
+  return p.replace(/\b\w+\b/g, function (w) { return mapping[w] !== undefined ? mapping[w] : w; });
 }
 
-/* ---------------- Main ---------------- */
+// Unwrap play.php?to= URLs (from CloudStream)
+function unwrapPlayUrl(url) {
+  try {
+    if (url.indexOf("play.php?to=") !== -1) {
+      var decoded = decodeURIComponent(url.substring(url.indexOf("play.php?to=") + "play.php?to=".length)).trim();
+      if (decoded.indexOf("https://") !== -1 && decoded.indexOf("https://") !== decoded.lastIndexOf("https://")) {
+        decoded = decoded.substring(decoded.lastIndexOf("https://"));
+      }
+      return decoded.indexOf("http") === 0 ? decoded : "https:" + decoded.replace(/^:/, "");
+    }
+    return url;
+  } catch (e) { return url; }
+}
+
+// Extract streams from a /watch/ page (Movies and Episodes)
+function extractFromWatchPage(watchUrl) {
+  log("Extracting from watch page:", watchUrl);
+  return fetchHtml(watchUrl)
+    .then(function (html) {
+      if (!html) return [];
+      var finalWatchUrl = watchUrl; // Note: fetch redirects, but we'll use original for referer
+      var baseUrl = getBaseUrl(finalWatchUrl);
+      var promises = [];
+
+      // 1. Check direct iframe in player--iframe
+      var directIframeMatch = html.match(/<div class="player--iframe">[\s\S]*?<iframe[^>]+src=["']([^"']+)["']/i);
+      if (directIframeMatch) {
+        log("Found direct iframe:", directIframeMatch[1]);
+        promises.push(resolveEmbed(directIframeMatch[1], finalWatchUrl));
+      }
+
+      // 2. Iterate through server list (watch--servers--list)
+      var serverRegex = /<li[^>]*class="[^"]*server--item[^"]*"[^>]*data-id=["']([^"']+)["'][^>]*data-server=["']([^"']+)["'][^>]*>([\s\S]*?)<\/li>/gi;
+      var match;
+      while ((match = serverRegex.exec(html)) !== null) {
+        var serverId = match[1];
+        var serverNum = match[2];
+        var serverName = match[3].replace(/<[^>]+>/g, " ").trim() || ("Server " + serverNum);
+        promises.push(fetchServerAjax(baseUrl, serverId, serverNum, finalWatchUrl, serverName));
+      }
+
+      if (promises.length === 0) { log("No iframes or servers found on watch page"); return []; }
+      return Promise.all(promises).then(function (results) {
+        var flat = [];
+        results.forEach(function (arr) { if (arr) flat = flat.concat(arr); });
+        return flat;
+      });
+    })
+    .catch(function (e) { log("extractFromWatchPage error:", e.message); return []; });
+}
+
+// Fetch Server.php via AJAX to get the embed iframe
+function fetchServerAjax(baseUrl, serverId, serverNum, referer, serverName) {
+  var ajaxUrl = baseUrl + "/wp-content/themes/movies2023/Ajaxat/Single/Server.php";
+  log("AJAX Server:", serverName, "id:", serverId);
+  return postForm(ajaxUrl, { id: serverId, i: serverNum }, referer)
+    .then(function (resHtml) {
+      if (!resHtml) return [];
+      var iframeMatch = resHtml.match(/<iframe[^>]+src=["']([^"']+)["']/i);
+      if (!iframeMatch) { log("No iframe in AJAX response for", serverName); return []; }
+      var embedUrl = iframeMatch[1];
+      log("AJAX returned embed:", embedUrl);
+      return resolveEmbed(embedUrl, referer);
+    });
+}
+
+// Resolve an embed URL (VidTube or others)
+function resolveEmbed(embedUrl, referer) {
+  var finalUrl = unwrapPlayUrl(embedUrl);
+  log("Resolving embed:", finalUrl);
+  if (finalUrl.indexOf("vidtube") !== -1) {
+    return resolveVidTube(finalUrl, referer);
+  }
+  // Fallback: try to find direct links in the embed HTML
+  return fetchHtml(finalUrl, referer).then(function (html) {
+    if (!html) return [];
+    var streams = [];
+    var mp4Regex = /https?:\/\/[^\s"'<>\\]+\.mp4[^\s"'<>\\]*/gi;
+    var m;
+    while ((m = mp4Regex.exec(html)) !== null) {
+      streams.push({ url: m[0], quality: "HD", label: "Direct" });
+    }
+    return streams;
+  });
+}
+
+// VidTube Resolver (Ported from CloudStream)
+function resolveVidTube(url, referer) {
+  log("VidTube resolving:", url);
+  return fetchHtml(url, referer).then(function (html) {
+    if (!html) return [];
+    var streams = [];
+
+    // 1. Check for download buttons (a[href*='/d/'])
+    var dlRegex = /<a[^>]+href=["']([^"']*\/d\/[^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+    var m;
+    var dlPromises = [];
+    while ((m = dlRegex.exec(html)) !== null) {
+      var href = m[1];
+      var labelMatch = m[2].match(/<b>([^<]+)<\/b>/i);
+      var quality = labelMatch ? labelMatch[1].trim() : "Direct";
+      var fullUrl = href.indexOf("http") === 0 ? href : getBaseUrl(url) + href;
+      dlPromises.push(fetchHtml(fullUrl, url).then(function (dlHtml) {
+        if (!dlHtml) return null;
+        var directMatch = dlHtml.match(/<a[^>]+href=["']([^"']+\.(?:mp4|m3u8)[^"']*)["']/i) ||
+                          dlHtml.match(/href=["']([^"']*download[^"']*)["']/i);
+        var finalUrl = directMatch ? directMatch[1] : null;
+        if (finalUrl) {
+          return { url: finalUrl, quality: quality, label: "VidTube-DL" };
+        }
+        return null;
+      }));
+    }
+
+    if (dlPromises.length > 0) {
+      return Promise.all(dlPromises).then(function (results) {
+        return results.filter(function (r) { return r !== null; });
+      });
+    }
+
+    // 2. Fallback: Packer unpacking
+    var packerMatch = html.match(/eval\(function\(p,a,c,k,e,d\)\{[\s\S]*?\}\(\s*['"]([\s\S]*?)['"]\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*['"]([\s\S]*?)['"]\.split/);
+    if (!packerMatch) {
+      log("VidTube: No packer found");
+      return [];
+    }
+    var p = packerMatch[1].replace(/\\'/g, "'");
+    var a = parseInt(packerMatch[2], 10) || 62;
+    var c = parseInt(packerMatch[3], 10) || 0;
+    var kStr = packerMatch[4];
+    var k = kStr ? kStr.split("|") : [];
+
+    var unpacked = unpackJs(p, a, c, k);
+    var fileRegex = /file\s*:\s*["'](https?:\/\/[^"']+)["']/g;
+    var labelRegex = /label\s*:\s*["']([^"']+)["']/g;
+    var files = [], labels = [], fm, lm;
+    while ((fm = fileRegex.exec(unpacked)) !== null) files.push(fm[1]);
+    while ((lm = labelRegex.exec(unpacked)) !== null) labels.push(lm[1]);
+
+    for (var i = 0; i < files.length; i++) {
+      streams.push({ url: files[i], quality: labels[i] || "Auto", label: "VidTube-Packed" });
+    }
+    log("VidTube unpacked links:", streams.length);
+    return streams;
+  });
+}
+
+/* ---------------- Main Entry ---------------- */
 
 function getStreams(tmdbId, mediaType, season, episode) {
   log("START:", tmdbId, mediaType, "S" + season, "E" + episode);
@@ -195,75 +334,58 @@ function getStreams(tmdbId, mediaType, season, episode) {
   return tmdbTitles(tmdbId, mediaType)
     .then(function (info) {
       if (!info.titles.length) { log("No TMDB titles"); return null; }
-      log("Titles:", info.titles.join(" | "));
-      return findItemUrl(info.titles, isMovie);
+      return findPageUrl(info.titles, isMovie);
     })
     .then(function (pageUrl) {
       if (!pageUrl) { log("No page found"); return []; }
       log("Main page:", pageUrl);
 
-      return fetch(pageUrl, { headers: { "User-Agent": USER_AGENT } })
-        .then(function (res) { return res.text(); })
-        .then(function (html) {
-          log("Main page HTML length:", html.length);
+      return fetchHtml(pageUrl).then(function (html) {
+        if (!html) return [];
+        var targetUrl = pageUrl;
 
-          // For series: find and fetch episode page
-          if (!isMovie && season != null && episode != null) {
-            var epUrl = findEpisodeUrl(html, season, episode);
-            if (!epUrl) {
-              log("Episode S" + season + "E" + episode + " NOT found in series page");
-              return [];
-            }
-            log("Episode page:", epUrl);
-            return fetch(epUrl, { headers: { "User-Agent": USER_AGENT } })
-              .then(function (r) { return r.text(); })
-              .then(function (epHtml) {
-                log("Episode HTML length:", epHtml.length);
-                return extractStreams(epHtml, epUrl);
-              });
+        // Series: Find episode URL
+        if (!isMovie && season != null && episode != null) {
+          var epUrl = findEpisodeUrl(html, season, episode);
+          if (!epUrl) {
+            log("Episode S" + season + "E" + episode + " not found in series page");
+            return [];
           }
-
-          // For movie: extract from main page
-          return extractStreams(html, pageUrl);
-        });
-    })
-    .then(function (items) {
-      if (!items || !items.length) { log("No items extracted"); return []; }
-      log("Extracted items:", items.length);
-
-      var promises = items.map(function (item) {
-        if (item.type === "direct") {
-          return Promise.resolve([item]);
-        }
-        if (item.type === "embed") {
-          if (/vidtube\.one/i.test(item.url)) {
-            return resolveVidTube(item.url);
-          }
-          return fetch(item.url, { headers: { "User-Agent": USER_AGENT } })
-            .then(function (r) { return r.text(); })
-            .then(function (eh) {
-              return extractStreams(eh, item.url).filter(function (d) { return d.type === "direct"; });
-            })
-            .catch(function () { return []; });
-        }
-        return Promise.resolve([]);
-      });
-
-      return Promise.all(promises).then(function (results) {
-        var flat = [], seen = {};
-        results.forEach(function (arr) {
-          arr.forEach(function (s) {
-            if (s.url && !seen[s.url]) { seen[s.url] = true; flat.push(s); }
+          log("Episode URL:", epUrl);
+          targetUrl = epUrl;
+          // Fetch episode page HTML
+          return fetchHtml(epUrl).then(function (epHtml) {
+            return epHtml;
           });
-        });
-        log("Final streams:", flat.length);
-        return flat;
+        }
+        return html;
+      })
+      .then(function (targetHtml) {
+        // Determine the final watch URL. CloudStream uses /watch/ suffix.
+        // Usually the page HTML contains a link to the watch page.
+        var watchUrl = pageUrl;
+        var watchMatch = targetHtml.match(/href=["']([^"']*\/watch\/[^"']*)["']/i);
+        if (watchMatch) {
+          watchUrl = fixUrl(watchMatch[1], BASE_URL);
+        } else {
+          // If no explicit watch link, try appending /watch/ (common pattern)
+          watchUrl = pageUrl.replace(/\/$/, "") + "/watch/";
+        }
+        log("Final watch URL:", watchUrl);
+        return extractFromWatchPage(watchUrl);
       });
     })
     .then(function (streams) {
-      return streams.map(function (s) {
+      if (!streams || !streams.length) { log("No streams extracted"); return []; }
+      log("Raw streams found:", streams.length);
+
+      // Deduplicate and format for Nuvio
+      var seen = {}, final = [];
+      streams.forEach(function (s) {
+        if (!s.url || seen[s.url]) return;
+        seen[s.url] = true;
         var isHls = s.url.indexOf(".m3u8") !== -1;
-        return {
+        final.push({
           name: "TopCinema - " + (s.quality || "HD"),
           title: "TopCinema \u2022 " + (s.label || "Server") + " (" + (isHls ? "HLS" : "MP4") + ")",
           url: s.url,
@@ -271,8 +393,10 @@ function getStreams(tmdbId, mediaType, season, episode) {
           provider: "topcinema",
           headers: { "User-Agent": USER_AGENT, "Referer": BASE_URL },
           type: isHls ? "hls" : "mp4"
-        };
+        });
       });
+      log("Final streams:", final.length);
+      return final;
     })
     .catch(function (err) {
       log("FATAL:", err && err.message);
