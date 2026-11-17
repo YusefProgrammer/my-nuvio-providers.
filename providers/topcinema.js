@@ -1,7 +1,6 @@
 /**
- * TopCinema - Nuvio JS Provider
- * Scrapes topcinemaa.one using TMDB for accurate title lookup.
- * Compatible with Hermes (Promise chains only, no async/await).
+ * TopCinema - Nuvio JS Provider (Movie + Series + VidTube Resolver)
+ * Compatible with Hermes (Promise chains only).
  */
 
 const BASE_URL = "https://topcinemaa.one";
@@ -45,12 +44,6 @@ function tmdbTitles(tmdbId, mediaType) {
           }
         }
       }
-      if (d.alternative_titles && d.alternative_titles.results) {
-        for (var j = 0; j < d.alternative_titles.results.length; j++) {
-          var alt = d.alternative_titles.results[j].title;
-          if (alt && titles.indexOf(alt) === -1) titles.push(alt);
-        }
-      }
       return {
         titles: titles,
         year: (d.release_date || d.first_air_date || "").split("-")[0] || null
@@ -64,16 +57,14 @@ function tmdbTitles(tmdbId, mediaType) {
 
 /* ---------------- Search on TopCinema ---------------- */
 
-function findItemUrl(titles, year, isMovie) {
-  var queries = titles.slice(0, 4); // استخدم أول 4 عناوين للبحث
+function findItemUrl(titles, isMovie) {
+  var queries = titles.slice(0, 4);
   var promises = queries.map(function (q) {
     return fetch(BASE_URL + "/search/?query=" + encodeURIComponent(q), {
       headers: { "User-Agent": USER_AGENT }
     })
     .then(function (res) { return res.text(); })
-    .then(function (html) {
-      return parseSearchResults(html, titles, isMovie);
-    })
+    .then(function (html) { return parseSearchResults(html, titles, isMovie); })
     .catch(function () { return null; });
   });
 
@@ -89,7 +80,6 @@ function findItemUrl(titles, year, isMovie) {
 }
 
 function parseSearchResults(html, wantedTitles, isMovie) {
-  // البحث عن روابط داخل عناصر .Small--Box أو .Block--Item
   var re = /<a\b[^>]*?href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
   var m;
   var best = null;
@@ -101,7 +91,6 @@ function parseSearchResults(html, wantedTitles, isMovie) {
     var text = m[2].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().toLowerCase();
     var normText = text.replace(/[^a-z0-9\u0600-\u06FF]+/g, "");
 
-    // تجاهل روابط غير المحتوى
     if (/\/(category|tag|page|search|login|register|contact|wp-content|feed|author)\b/i.test(href)) continue;
     if (href.indexOf(BASE_URL) === -1 && href.indexOf("/") !== 0) continue;
 
@@ -112,7 +101,6 @@ function parseSearchResults(html, wantedTitles, isMovie) {
       if (wanted[i].indexOf(normText) !== -1 && normText.length > 3) { score = Math.max(score, 1000); }
     }
 
-    // التحقق من نوع المحتوى (فيلم/مسلسل)
     var isSeries = /مسلسل|series|episode|حلقة/i.test(text) || /series|episode/i.test(href);
     if (isMovie && isSeries) score -= 500;
     if (!isMovie && !isSeries) score -= 500;
@@ -125,13 +113,114 @@ function parseSearchResults(html, wantedTitles, isMovie) {
   return best;
 }
 
-/* ---------------- Extract Streams from Detail/Watch Page ---------------- */
+/* ---------------- VidTube Resolver (Critical Fix) ---------------- */
 
-function extractStreamsFromPage(html, pageUrl) {
+// يستخرج روابط MP4 المباشرة من صفحة embed الخاصة بـ VidTube
+function resolveVidTube(embedUrl) {
+  log("Resolving VidTube:", embedUrl);
+  return fetch(embedUrl, {
+    headers: { "User-Agent": USER_AGENT, "Referer": BASE_URL }
+  })
+  .then(function (res) { return res.text(); })
+  .then(function (html) {
+    var links = [];
+    var seen = {};
+
+    // 1. روابط mp4 مباشرة داخل HTML أو JavaScript
+    var mp4Regex = /https?:\/\/[^\s"'<>\\]+\.mp4[^\s"'<>\\]*/gi;
+    var match;
+    while ((match = mp4Regex.exec(html)) !== null) {
+      var url = match[0];
+      if (seen[url]) continue;
+      seen[url] = true;
+      // محاولة استخراج الجودة من الرابط
+      var qMatch = url.match(/(\d{3,4})p/);
+      var quality = qMatch ? qMatch[1] + "p" : "HD";
+      links.push({ url: url, quality: quality });
+    }
+
+    // 2. روابط m3u8 (إذا وجدت)
+    var m3u8Regex = /https?:\/\/[^\s"'<>\\]+\.m3u8[^\s"'<>\\]*/gi;
+    while ((match = m3u8Regex.exec(html)) !== null) {
+      var url = match[0];
+      if (seen[url]) continue;
+      seen[url] = true;
+      links.push({ url: url, quality: "HLS" });
+    }
+
+    // 3. البحث عن روابط داخل متغيرات JavaScript مثل "file": "..."
+    var jsRegex = /["'](?:file|source|src|url)["']\s*:\s*["']([^"']+\.(?:mp4|m3u8)[^"']*)["']/gi;
+    while ((match = jsRegex.exec(html)) !== null) {
+      var url = fixUrl(match[1], embedUrl);
+      if (seen[url]) continue;
+      seen[url] = true;
+      links.push({ url: url, quality: "HD" });
+    }
+
+    log("VidTube found " + links.length + " direct links");
+    return links;
+  })
+  .catch(function (e) {
+    log("VidTube resolve error:", e.message);
+    return [];
+  });
+}
+
+/* ---------------- Series Episodes Extraction ---------------- */
+
+// يستخرج روابط الحلقات من صفحة المسلسل
+function findEpisodeUrl(seriesHtml, season, episode) {
+  // TopCinema يضع روابط الحلقات داخل عناصر مثل:
+  // <div class="episodes--list--side"><a href="...">الحلقة 1<em>...</em></a></div>
+  // أو داخل <a> مع نص يحتوي على "الحلقة" أو رقم الحلقة.
+  var re = /<a\b[^>]*?href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  var m;
+  var wantedEp = parseInt(episode, 10);
+  var wantedSeason = parseInt(season, 10) || 1;
+  var candidates = [];
+
+  while ((m = re.exec(seriesHtml)) !== null) {
+    var href = m[1];
+    var text = m[2].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+
+    // تجاهل الروابط غير المتعلقة بالحلقات
+    if (!/حلقة|الحلقة|episode|ep\s*\d+/i.test(text) && !/episode|ep[-_]?\d+/i.test(href)) continue;
+
+    // محاولة استخراج رقم الحلقة من النص أو الرابط
+    var epMatch = text.match(/(?:الحلقة|حلقة|episode|ep)\s*(\d+)/i) ||
+                  href.match(/(?:episode|ep)[-_]?(\d+)/i) ||
+                  href.match(/(\d+)(?:\/)?$/);
+    if (!epMatch) continue;
+    var epNum = parseInt(epMatch[1], 10);
+
+    // محاولة استخراج رقم الموسم (إذا وجد)
+    var seasonMatch = text.match(/(?:الموسم|season)\s*(\d+)/i) ||
+                      href.match(/(?:season|s)[-_]?(\d+)/i);
+    var seasonNum = seasonMatch ? parseInt(seasonMatch[1], 10) : 1;
+
+    if (seasonNum === wantedSeason && epNum === wantedEp) {
+      // أولوية عالية للتطابق التام
+      candidates.unshift({ url: fixUrl(href, BASE_URL), score: 100 });
+    } else if (epNum === wantedEp) {
+      candidates.push({ url: fixUrl(href, BASE_URL), score: 50 });
+    }
+  }
+
+  if (candidates.length > 0) {
+    // إرجاع أفضل مرشح
+    candidates.sort(function (a, b) { return b.score - a.score; });
+    return candidates[0].url;
+  }
+  return null;
+}
+
+/* ---------------- Extract Streams from Page ---------------- */
+
+function extractStreams(html, pageUrl) {
   var streams = [];
   var seen = {};
 
-  // 1. استخراج روابط iframe
+  // 1. روابط iframe (قد تكون embed)
   var iframeRegex = /<iframe\b[^>]*?src=["']([^"']+)["'][^>]*>/gi;
   var im;
   while ((im = iframeRegex.exec(html)) !== null) {
@@ -139,10 +228,10 @@ function extractStreamsFromPage(html, pageUrl) {
     if (seen[iframeUrl]) continue;
     if (/facebook|google|youtube|googletagmanager|google-analytics/i.test(iframeUrl)) continue;
     seen[iframeUrl] = true;
-    streams.push({ url: iframeUrl, quality: "HD", label: "Embed Server" });
+    streams.push({ type: "embed", url: iframeUrl });
   }
 
-  // 2. استخراج روابط m3u8 / mp4 المباشرة
+  // 2. روابط m3u8 / mp4 مباشرة
   var directRegex = /https?:\/\/[^\s"'<>\\]+\.(?:m3u8|mp4|mkv)[^\s"'<>\\]*/gi;
   var dm;
   while ((dm = directRegex.exec(html)) !== null) {
@@ -151,91 +240,137 @@ function extractStreamsFromPage(html, pageUrl) {
     if (dUrl.indexOf(".jpg") !== -1 || dUrl.indexOf(".png") !== -1) continue;
     seen[dUrl] = true;
     var isHls = dUrl.indexOf(".m3u8") !== -1;
-    streams.push({ url: dUrl, quality: isHls ? "1080p" : "720p", label: isHls ? "HLS Direct" : "MP4 Direct" });
+    streams.push({ type: "direct", url: dUrl, quality: isHls ? "1080p" : "720p" });
   }
 
-  // 3. استخراج روابط من داخل JavaScript (إذا كانت مشفرة أو داخل متغيرات)
+  // 3. روابط داخل JavaScript
   var jsRegex = /(?:file|source|src|url)\s*[:=]\s*["']([^"']+\.(?:m3u8|mp4)[^"']*)["']/gi;
   var jm;
   while ((jm = jsRegex.exec(html)) !== null) {
     var jsUrl = fixUrl(jm[1], BASE_URL);
     if (seen[jsUrl]) continue;
     seen[jsUrl] = true;
-    streams.push({ url: jsUrl, quality: "HD", label: "JS Server" });
+    streams.push({ type: "direct", url: jsUrl, quality: "HD" });
   }
 
   return streams;
 }
 
-/* ---------------- Main Entry Point ---------------- */
+/* ---------------- Main Flow ---------------- */
 
 function getStreams(tmdbId, mediaType, season, episode) {
   log("tmdbId=" + tmdbId + ", type=" + mediaType + ", s=" + season + ", e=" + episode);
-
   var isMovie = mediaType === "movie";
 
   return tmdbTitles(tmdbId, mediaType)
     .then(function (info) {
-      if (!info.titles.length) {
-        log("No titles found from TMDB");
-        return [];
-      }
-      log("Titles:", info.titles.join(" | "));
+      if (!info.titles.length) { log("No titles from TMDB"); return []; }
 
-      return findItemUrl(info.titles, info.year, isMovie)
+      return findItemUrl(info.titles, isMovie)
         .then(function (pageUrl) {
-          if (!pageUrl) {
-            log("No page found on TopCinema");
-            return [];
-          }
+          if (!pageUrl) { log("No page found"); return []; }
 
           return fetch(pageUrl, { headers: { "User-Agent": USER_AGENT } })
             .then(function (res) { return res.text(); })
             .then(function (html) {
-              var streams = extractStreamsFromPage(html, pageUrl);
+              var targetUrl = pageUrl;
 
-              // إذا كانت الصفحة تحتوي على رابط مشاهدة منفصل، اجلبه أيضًا
-              var watchMatch = html.match(/href=["']([^"']*(?:watch|watching|مشاهدة)[^"']*)["']/i);
-              if (watchMatch && watchMatch[1]) {
-                var watchUrl = fixUrl(watchMatch[1], BASE_URL);
-                return fetch(watchUrl, { headers: { "User-Agent": USER_AGENT } })
-                  .then(function (res) { return res.text(); })
-                  .then(function (watchHtml) {
-                    var watchStreams = extractStreamsFromPage(watchHtml, watchUrl);
-                    return streams.concat(watchStreams);
-                  })
-                  .catch(function () { return streams; });
+              // إذا كان مسلسلاً، ابحث عن رابط الحلقة المطلوبة
+              if (!isMovie && season != null && episode != null) {
+                var epUrl = findEpisodeUrl(html, season, episode);
+                if (epUrl) {
+                  log("Episode URL:", epUrl);
+                  targetUrl = epUrl;
+                  // جلب صفحة الحلقة نفسها
+                  return fetch(epUrl, { headers: { "User-Agent": USER_AGENT } })
+                    .then(function (r) { return r.text(); });
+                } else {
+                  log("Episode not found in series page");
+                  // قد يكون رابط الحلقة موجودًا في صفحة المسلسل، لكن لم نعثر عليه.
+                  // نجرب استخدام الصفحة الحالية كحل أخير.
+                }
               }
-              return streams;
+              return html;
+            })
+            .then(function (pageHtml) {
+              // استخراج العناصر (embed/direct)
+              return extractStreams(pageHtml, targetUrl);
             });
         });
     })
-    .then(function (extracted) {
-      if (!extracted || !extracted.length) {
-        log("No streams extracted");
-        return [];
-      }
+    .then(function (items) {
+      if (!items || !items.length) { log("No items extracted"); return []; }
 
-      // تحويل إلى صيغة Stream Objects الخاصة بـ Nuvio
-      var finalStreams = [];
-      var seenUrls = {};
-      for (var i = 0; i < extracted.length; i++) {
-        var s = extracted[i];
-        if (!s.url || seenUrls[s.url]) continue;
-        seenUrls[s.url] = true;
-        var isHls = s.url.indexOf(".m3u8") !== -1;
-        finalStreams.push({
+      // معالجة كل عنصر: إذا كان embed VidTube، فك تشفيره
+      var promises = items.map(function (item) {
+        if (item.type === "direct") {
+          return Promise.resolve([{
+            url: item.url,
+            quality: item.quality || "HD",
+            label: "Direct",
+            isHls: item.url.indexOf(".m3u8") !== -1
+          }]);
+        } else if (item.type === "embed") {
+          // إذا كان الرابط من VidTube، استخدم دالة الحل
+          if (/vidtube\.one/i.test(item.url)) {
+            return resolveVidTube(item.url).then(function (links) {
+              return links.map(function (l) {
+                return {
+                  url: l.url,
+                  quality: l.quality,
+                  label: "VidTube",
+                  isHls: l.url.indexOf(".m3u8") !== -1
+                };
+              });
+            });
+          } else {
+            // محاولة استخراج روابط من أي embed آخر
+            return fetch(item.url, { headers: { "User-Agent": USER_AGENT } })
+              .then(function (r) { return r.text(); })
+              .then(function (embedHtml) {
+                var extracted = extractStreams(embedHtml, item.url);
+                return extracted.map(function (ex) {
+                  return {
+                    url: ex.url,
+                    quality: ex.quality || "HD",
+                    label: "Embed",
+                    isHls: ex.url.indexOf(".m3u8") !== -1
+                  };
+                });
+              })
+              .catch(function () { return []; });
+          }
+        }
+        return Promise.resolve([]);
+      });
+
+      return Promise.all(promises).then(function (results) {
+        var flat = [];
+        var seen = {};
+        results.forEach(function (arr) {
+          arr.forEach(function (s) {
+            if (s.url && !seen[s.url]) {
+              seen[s.url] = true;
+              flat.push(s);
+            }
+          });
+        });
+        log("Final streams:", flat.length);
+        return flat;
+      });
+    })
+    .then(function (streams) {
+      return streams.map(function (s) {
+        return {
           name: "TopCinema - " + (s.quality || "HD"),
-          title: "TopCinema \u2022 " + (s.label || "Server") + " (" + (isHls ? "HLS" : "MP4") + ")",
+          title: "TopCinema \u2022 " + (s.label || "Server") + " (" + (s.isHls ? "HLS" : "MP4") + ")",
           url: s.url,
-          quality: s.quality || "HD",
+          quality: s.quality,
           provider: "topcinema",
           headers: { "User-Agent": USER_AGENT, "Referer": BASE_URL },
-          type: isHls ? "hls" : "mp4"
-        });
-      }
-      log("Final streams:", finalStreams.length);
-      return finalStreams;
+          type: s.isHls ? "hls" : "mp4"
+        };
+      });
     })
     .catch(function (err) {
       log("getStreams error:", err.message);
