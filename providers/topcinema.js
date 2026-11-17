@@ -5,7 +5,7 @@
  */
 
 var BASE_URL = "https://topcinemaa.one";
-var TMDB_API_KEY = "6c91e91ec97e117e446a62f4d2ace9b7";
+var TMDB_API_KEY = "1cb5d10f803fcf58230ea4e30ee63b575a6b73b9";
 var USER_AGENT = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36";
 
 function log() {
