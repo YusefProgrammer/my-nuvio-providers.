@@ -15,6 +15,16 @@
       "logo": "https://www.google.com/s2/favicons?domain=animewitcher.com&sz=256",
       "contentLanguage": ["ar", "en"]
     },
+{
+  "id": "anime3rb",
+  "name": "Anime3rb",
+  "version": "1.0.0",
+  "filename": "providers/anime3rb.js",
+  "supportedTypes": ["movie", "tv"],
+  "contentLanguage": ["ar"],
+  "logo": "https://images.anime3rb.com/favicon/apple-touch-icon.png",
+  "enabled": true
+},
     {
       "id": "cimacloud",
       "name": "Cima Cloud",
