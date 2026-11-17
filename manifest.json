@@ -63,6 +63,16 @@
   "formats": ["mp4", "mkv", "hls"],
   "limited": false
 },
+{
+  "id": "tuktukcima",
+  "name": "TukTukcima",
+  "version": "1.0.0",
+  "filename": "providers/tuktukcima.js",
+  "supportedTypes": ["movie", "tv"],
+  "contentLanguage": ["ar"],
+  "logo": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ10TEG3tTtkEF9_g3IslEP3xs0wx9EVhBs7b_H5M1gpg&s=10",
+  "enabled": true
+},
     {
       "id": "nuvio-faselhd",
       "name": "FaselHD",
