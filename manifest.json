@@ -5,8 +5,8 @@
     {
       "id": "animewitcher",
       "name": "AnimeWitcher",
-      "description": "AnimeWitcher (animewitcher.com) — anime movies & series",
-      "version": "1.0",
+      "description": "انمي ويتشر شاهد الانمي احداث بي سرع و استمتع بنزول مئات حلقات يومياً ",
+      "version": "5.0",
       "author": "yo",
       "supportedTypes": ["movie", "tv"],
       "filename": "providers/animewitcher.js",
@@ -15,31 +15,11 @@
       "logo": "https://www.google.com/s2/favicons?domain=animewitcher.com&sz=256",
       "contentLanguage": ["ar", "en"]
     },
-{
-  "id": "wecima",
-  "name": "WeCima",
-  "version": "1.0.0",
-  "filename": "providers/wecima.js",
-  "supportedTypes": ["movie", "tv"],
-  "contentLanguage": ["ar"],
-  "logo": "https://wecima.ac/static/img/favicon.png",
-  "enabled": true
-},
-{
-  "id": "anime3rb",
-  "name": "Anime3rb",
-  "version": "1.0.0",
-  "filename": "providers/anime3rb.js",
-  "supportedTypes": ["movie", "tv"],
-  "contentLanguage": ["ar"],
-  "logo": "https://images.anime3rb.com/favicon/apple-touch-icon.png",
-  "enabled": true
-},
     {
       "id": "cimacloud",
       "name": "Cima Cloud",
-      "description": "Cima Cloud (cima-cloud.com) — full Arabic catalog: movies, series & anime, HLS/MP4 via the app's own API with token attestation (~5-10s)",
-      "version": "1.0",
+      "description": من افضل مواقع التي راح تستمتع بها بسبب تنوع اعمال فيه ",
+      "version": "3.0",
       "author": "yo",
       "supportedTypes": [
         "movie",
@@ -59,8 +39,8 @@
 {
   "id": "egywatch",
   "name": "EgyWatch",
-  "description": "EgyWatch provider converted from CloudStream/CS3 format to Nuvio runtime environment.",
-  "version": "1.0.0",
+  "description": "ايجي واتش مكتبة ضخم من افلام و مسلسلات  تحيا له ",
+  "version": "2.0.0",
   "author": "YO",
   "filename": "providers/egywatch.js",
   "supportedTypes": ["movie", "tv"],
@@ -70,33 +50,9 @@
   "formats": ["mp4", "m3u8"]
 },
     {
-  "id": "topcinema",
-  "name": "Top Cinema",
-  "description": "موقع توب سينما لمشاهدة الأفلام والمسلسلات والأنمي مترجمة اون لاين",
-  "version": "1.0.0",
-  "author": "Yusef Messood (Yo)",
-  "logo": "https://topcinemaa.one/wp-content/uploads/2023/05/cropped-icon-192x192.png",
-  "supportedTypes": ["movie", "tv"],
-  "filename": "providers/topcinema.js",
-  "enabled": true,
-  "contentLanguage": ["ar"],
-  "formats": ["mp4", "mkv", "hls"],
-  "limited": false
-},
-{
-  "id": "tuktukcima",
-  "name": "TukTukcima",
-  "version": "1.0.0",
-  "filename": "providers/tuktukcima.js",
-  "supportedTypes": ["movie", "tv"],
-  "contentLanguage": ["ar"],
-  "logo": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ10TEG3tTtkEF9_g3IslEP3xs0wx9EVhBs7b_H5M1gpg&s=10",
-  "enabled": true
-},
-    {
-      "id": "nuvio-faselhd",
+      "id": "faselhd",
       "name": "FaselHD",
-      "description": "Arabic Hard Sub movies, TV shows, and anime (~5s)",
+      "description": "موقع فاصل اعلاني مكتبة ضخم لي افلام و مسلسلات ",
       "version": "16.2",
       "author": "yo",
       "supportedTypes": ["movie", "tv"],
