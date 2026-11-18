@@ -75,6 +75,16 @@
   "enabled": true,
   "formats": ["mp4", "m3u8"]
 },
+{
+  "id": "arabic-aggregator",
+  "name": "Arabic Aggregator",
+  "version": "1.0.0",
+  "filename": "providers/arabic-aggregator.js",
+  "supportedTypes": ["movie", "tv"],
+  "contentLanguage": ["ar"],
+  "logo": "https://raw.githubusercontent.com/Abodabodd/re-3arabi/main/repo/icon.png",
+  "enabled": true
+},
     {
       "id": "faselhd",
       "name": "FaselHD",
