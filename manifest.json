@@ -71,7 +71,7 @@
   "filename": "providers/topcinema.js",
   "supportedTypes": ["movie", "tv"],
   "contentLanguage": ["ar"],
-  "logo": "https://raw.githubusercontent.com/Abodabodd/re-3arabi/refs/heads/main/Egy/icon.png",
+  "logo": "https://topcinemaa.one/wp-content/themes/movies2023/top.png",
   "enabled": true,
   "formats": ["mp4", "m3u8"]
 },
