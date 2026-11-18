@@ -49,6 +49,19 @@
   "enabled": true,
   "formats": ["mp4", "m3u8"]
 },
+{
+  "id": "everyone",
+  "name": "all",
+  "description": "جميع اضافات ",
+  "version": "3.0.0",
+  "author": "YO",
+  "filename": "providers/aii.js",
+  "supportedTypes": ["movie", "tv"],
+  "contentLanguage": ["ar"],
+  "logo": "https://raw.githubusercontent.com/Abodabodd/re-3arabi/refs/heads/main/Egy/icon.png",
+  "enabled": true,
+  "formats": ["mp4", "m3u8"]
+},
     {
       "id": "faselhd",
       "name": "FaselHD",
